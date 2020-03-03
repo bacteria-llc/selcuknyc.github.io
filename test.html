@@ -1,0 +1,288 @@
+<HTML>
+<HEAD>
+<TITLE>Learning to Love your Z-buffer.</TITLE>
+<!- Sure steal the source! It's JavaScript! - Steve :-) >
+<script LANGUAGE="JavaScript">
+function zb (nbits,zFar,zNear,z)
+{
+  var a = zFar / ( zFar - zNear ) ;
+  var b = zFar * zNear / ( zNear - zFar ) ;
+  return Math.floor ( (1<<nbits)*(a+b/z) ) ;
+}
+
+function zprec (nbits,zFar,zNear,z)
+{
+  var b = zFar * zNear / ( zNear - zFar ) ;
+  var res = ( b / ( (b/z) - 1.0/(1<<nbits) ) ) - z ;
+
+  if ( res < 0.0001 )
+    return res ;
+  else
+    return Math.floor ( res * 100000.0 ) / 100000.0 ;
+}
+
+function dosum()
+{
+  document.temps.ZP.value = -zprec (
+       document.temps.ZB.value,
+       document.temps.ZF.value,
+       document.temps.ZN.value,
+       document.temps.Z.value ) ;
+  document.temps.ZV.value = zb (
+       document.temps.ZB.value,
+       document.temps.ZF.value,
+       document.temps.ZN.value,
+       document.temps.Z.value ) ;
+}
+
+</SCRIPT>
+</HEAD>
+<BODY text="#B5A642"
+      link="#8FFF8F"
+      vlink="#18A515"
+      alink="#20336B"
+      bgcolor="#005000"
+      background="marble.png">
+
+<TABLE>
+<TR>
+<TD>
+<center><H1>Learning to Love your Z-buffer.</H1></center>
+<br>
+<center>By Steve Baker</center>
+</TD>
+<TD>
+<ul>
+<FONT SIZE=-1>We British pronounce</FONT><br>
+<FONT SIZE=-1>the letter 'Z' as "zed" - but</FONT><br>
+<FONT SIZE=-1>Americans pronounce it "zee".</FONT><p>
+<FONT SIZE=-1>...although that's just to make</FONT><br>
+<FONT SIZE=-1>The Alphabet Song rhyme.</FONT><br>
+<FONT SIZE=-1><center>-- Steve</center></FONT><br>
+</ul>
+</TD>
+</TR>
+</TABLE>
+<H1>Introduction</H1>
+One of the more common OpenGL programming problems that I
+see concerns the poor precision of the Z buffer.
+<p>
+Many of the early 3D adaptors for the PC have a 16 bit Z
+buffer, some others have 24 bits - and the very best have
+32 bits.  If you are lucky enough to have a 32 bit Z buffer,
+then Z-precision may not seem to be an issue for you. However,
+if you expect your program to be portable, you'd better give
+it some thought.
+<p>
+The precision of Z matters because the Z buffer determines
+which objects are hidden behind which others - and if you
+don't have enough precision to resolve the distance between
+two nearby objects, they will randomly show through each other
+- sometimes in large zig-zags, sometimes in stripes.
+<p>
+This is commonly called 'flimmering' or 'Z-fighting' and it's
+very disturbing to the user.
+<H2>The Near Clip Plane</H2>
+The near clip plane (zNear for short) is typically set using
+gluPerspective() or glFrustum() - although it's also possible
+to set it by setting the GL_PROJECTION matrix directly.
+<p>
+Some graphics programmers call zNear 'hither' and zFar 'yonder'.
+<p>
+Beginners frequently place zNear at a very short distance
+because they don't want polygons close to the eye to be clipped
+against the near plane - and because it isn't obvious why you'd
+want to do anything else.
+<p>
+Positioning of zNear too close to the eye is the cause of
+flimmering (in almost every case) - and the remainder of
+this document explains why that is.
+<H2>The Resolution of Z.</H2>
+What people often fail to realise is that in nearly all machines,
+the Z buffer is non-linear.  The actual number stored in the
+Z buffer memory is related to the Z coordinate of the object
+in this manner:
+<pre>
+
+  z_buffer_value = (1&lt;&lt;N) * ( a + b / z )
+
+  Where:
+
+     N = number of bits of Z precision
+     a = zFar / ( zFar - zNear )
+     b = zFar * zNear / ( zNear - zFar )
+     z = distance from the eye to the object
+
+  ...and z_buffer_value is an integer.
+
+</pre>
+This means that Z (and hence the precision of Z) is proportional to
+the reciprocal of the z_buffer_value - and hence there
+is a LOT of precision close to the eye and very little
+precision off in the distance.
+<p>
+This reciprocal behaviour is somewhat useful because you
+need objects that are close to the eye to be rendered in
+great detail - and you need better Z precision for detailed
+objects.
+<p>
+However, an undesirable consequence of this is that many of your Z
+buffer's bits are wasted - storing insanely fine detail close to
+the near clip plane.  If you pull the near clip closer
+to your eye, then ever more bits are dedicated to the
+task of rendering things that are that close to you,
+at considerable cost to the precision a bit further out.
+<p>
+It follows that in most cases, flimmering can be greatly
+reduced - or even eliminated by moving the near clip plane
+further from your eye.
+<form NAME="temps">
+<H1>Z Calculator</H1>
+You can use this handy JavaScript calculator to see how your near and far
+clip plane choices affect Z precision at various ranges. Make sure 
+you use the same units for all three distances - the precision result
+is in those same units.  Make a change to the inputs and hit return
+and the results will be instantly recalculated.
+<H3>Input Your Data Here:</H3>
+<ul>
+<table>
+<tr>
+<td>Num.bits in Z buffer</td><td> <input TYPE="TEXT" NAME="ZB" onChange="dosum()" SIZE="4" VALUE="24"></td><td>(Usually 24 on modern graphics cards - 16 on older devices)</td>
+</tr>
+<tr>
+<td>zNear</td><td> <input TYPE="TEXT" NAME="ZN" onChange="dosum()" SIZE="6" VALUE="1.0"></td><td>(This number should be as large as you can tolerate)</td>
+</tr>
+<td>zFar</td><td> <input TYPE="TEXT" NAME="ZF" onChange="dosum()" SIZE="12" VALUE="1000000.0"></td><td>(This number can be very big for negligable penalty)</td>
+</tr>
+<tr>
+<td>Z distance</td><td> <input TYPE="TEXT" NAME="Z" onChange="dosum()" SIZE="12" VALUE=""></td><td>(This should lie between zNear and zFar for meaningful results)</td>
+</tr>
+</table>
+</ul>
+<H3>Results:</H3>
+<ul>
+<table>
+<tr>
+<td><b>Resolution of Z Buffer at this range =</b></td><td> <input TYPE="TEXT" NAME="ZP" SIZE="22" VALUE="???" onChange="alert('This is where the answer appears - don\'t type here\!')"></td><td>(The smallest depth separation it can resolve at this range)</td>
+</tr>
+<tr>
+<td><b>Value in Z Buffer =</b></td><td> <input TYPE="TEXT" NAME="ZV" SIZE="22" VALUE="???" onChange="alert('This is where the answer appears - don\'t type here\!')"></td><td>(The actual number that'll be written into memory)</td>
+</tr>
+</table>
+</ul>
+</form>
+<H2>How Bad Is It?</H2>
+Talking about how large the error is for absolute values
+of zNear (in feet, meters, lightyears or angstroms) is
+meaningless.  Given the math used to convert Z into the
+number in the Z buffer, it's also fairly meaningless to
+talk about absolute values in "OpenGL units" either.
+<p>
+Instead we have to think about the ratio of distances
+to objects in your scene to the value of zNear.
+<p>
+This equation applies:
+<pre>
+
+  delta = z * z / ( zNear * (1&lt;&lt;N) - z )
+
+  Where:
+
+     N     = number of bits of Z precision
+     zNear = distance from eye to near clip plane
+     z     = distance from the eye to the object
+     delta = the smallest resolvable Z separation
+             at this range.
+
+</pre>
+This equation is approximate - it only applies if zNear is
+much smaller than zFar - which is true for nearly all
+applications.
+<p>
+For another way to think about this, suppose we choose to
+think about the range at which there is a n% error in Z
+due to the precision of the Z buffer.  For ease of
+discussion, I'll call the ratio of that range to the value
+of zNear 'Zn%'.
+<p>
+Hence, Z5% is the "range at which there is a 5% error in
+Z" divided by zNear.
+<p>
+For a 16 bit Z buffer, the value of Z5% is about 3500.
+It varies *slightly* depending on the value of zFar,
+and for very small values of zFar, it does get a little
+bigger - but for practical applications, 3500 is a
+good rule-of-thumb.
+<p>
+What this means in practice, is that if you place zNear
+at 1 meter (in whatever units your database uses), then
+when an object is at 3,500 meters, there will be a 5%
+error in it's Z value.
+<pre>
+
+  For 16 bit Z:
+
+       Z10%   = ~8000 *
+       Z5%    =  3500
+       Z1%    =   666
+       Z0.1%  =    66
+       Z0.01% =     6
+
+</pre>
+<ul>
+* NB: The larger the range, the more the zFar distance starts
+to affect the precision - but for most practical applications,
+it doesn't make enough of a difference to matter.
+</ul>
+<p>
+The table tell us that value for Z1% is 666 and Z10% is ~8000.
+So with our 1 meter zNear, we can expect better than 1%
+precision below 666 meters, better than 5% precision below
+3500 meters and better than 10% at under 8000 meters.
+<p>
+Now, if your zNear is at 10cm, you'll see a 5% error
+at just 350 meters (3500*0.1m)- and out at 3.5km
+meters, the error will be around 33% - over a kilometer
+in error. An airplane flying behind a huge mountain
+could suddenly pop into view in front of it when we are
+are only a couple of miles away!
+<p>
+You can see that the placement of zNear is really
+critical in a 16 bit Z system.
+<p>
+For a 24 bit Z buffer, the ratios are 256 times larger
+so Z1% is ~170,000, and Z5% is about a million.
+<p>
+For a 32 bit Z buffer, even Z1% is about 45 million and
+we are unlikely to care about Z5% and Z10% metrics!
+<H2>Caveats</H2>
+There are other sources of Z error (although with a
+16 bit Z buffer, they are likely to be pretty negligable
+compared to the error in storing Z).
+<p>
+Some machines offer alternative depth buffering algorithms.
+These tend to fall into two catagories:
+<ul>
+<li>The W-buffer (aka OOZ-buffer - One-Over-Z) stores the
+    reciprocal of the usual Z-buffer value.  This is generally
+    harder to compute and results in a W that is
+    essentially linear and has uniform error everywhere.
+    That drastically improves Z-precision at larger ranges,
+    but greatly reduces precision close to the eye where
+    it's needed.  Several PC cards (eg 3Dfx) support OOZ
+    buffers, but not necessarily under OpenGL.
+
+<li>Floating point or Logrithmic Z (these are pretty similar
+    concepts actually).  This also tends to even out the
+    distribution of bits over the Z range - but without
+    completely eliminating the improved resolution close
+    to the eye.  SGI Infinite Reality machines do this - and
+    claim to get the equivelent *useful* Z precision using
+    15 bits as a conventional machine gets with 24bits.
+</ul>
+<H2>Conclusion</H2>
+Always put zNear as far from the eye as you can tolerate. 
+
+</BODY>
+</HTML>
+
